@@ -1,1 +1,5 @@
+.env
 dataset/
+
+others/cleaning_process.md
+others/df_structure.md

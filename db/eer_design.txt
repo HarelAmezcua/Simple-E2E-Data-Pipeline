@@ -1,0 +1,131 @@
+Given your dataset and assuming you're working with a PostgreSQL database and aiming for normalization, querying efficiency, and future scalability, here's a **best-practice schema design** for this electric vehicle dataset.
+
+---
+
+### ✅ **1. Main Table: `electric_vehicles`**
+
+| Column Name            | Type                  | Description                                |
+| ---------------------- | --------------------- | ------------------------------------------ |
+| `id`                   | SERIAL PRIMARY KEY    | Surrogate key for DB integrity             |
+| `vin_prefix`           | VARCHAR(10) UNIQUE    | First 10 chars of the VIN                  |
+| `model_year`           | INTEGER               | Model year of the vehicle                  |
+| `make_id`              | INTEGER               | FK to `makes(id)`                          |
+| `model`                | TEXT                  | Model name                                 |
+| `vehicle_type`         | TEXT                  | e.g., BEV, PHEV                            |
+| `cafv_eligibility`     | TEXT                  | Clean Alternative Fuel Vehicle eligibility |
+| `electric_range`       | INTEGER               | Range in miles                             |
+| `base_msrp`            | NUMERIC(10,2)         | MSRP price                                 |
+| `legislative_district` | INTEGER               | Legislative district                       |
+| `dol_vehicle_id`       | BIGINT                | Vehicle ID                                 |
+| `location`             | GEOGRAPHY(Point,4326) | Geographic location from POINT(...)        |
+| `utility_id`           | INTEGER               | FK to `utilities(id)`                      |
+| `census_tract`         | BIGINT                | Tract from 2020 Census                     |
+| `city_id`              | INTEGER               | FK to `cities(id)`                         |
+
+---
+
+### ✅ **2. Lookup Table: `makes`**
+
+| Column Name | Type                 | Description         |
+| ----------- | -------------------- | ------------------- |
+| `id`        | SERIAL PRIMARY KEY   |                     |
+| `name`      | TEXT UNIQUE NOT NULL | e.g., TESLA, NISSAN |
+
+---
+
+### ✅ **3. Lookup Table: `utilities`**
+
+| Column Name  | Type                 | Description                             |
+| ------------ | -------------------- | --------------------------------------- |
+| `id`         | SERIAL PRIMARY KEY   |                                         |
+| `name`       | TEXT UNIQUE NOT NULL |                                         |
+| `raw_string` | TEXT                 | Original multi-utility string if needed |
+
+> Since some entries include multiple utilities (`||` or `|` delimited), you can opt for a **many-to-many** relationship via a `vehicle_utilities` bridge table if you want atomicity:
+
+```sql
+vehicle_utilities (
+    vehicle_id INT REFERENCES electric_vehicles(id),
+    utility_id INT REFERENCES utilities(id),
+    PRIMARY KEY (vehicle_id, utility_id)
+)
+```
+
+---
+
+### ✅ **4. Lookup Table: `cities`**
+
+| Column Name   | Type               | Description   |
+| ------------- | ------------------ | ------------- |
+| `id`          | SERIAL PRIMARY KEY |               |
+| `city`        | TEXT               | e.g., Seattle |
+| `county`      | TEXT               | e.g., King    |
+| `state`       | CHAR(2)            | e.g., WA      |
+| `postal_code` | TEXT               | Zip code      |
+
+> You can normalize this further by splitting counties and states into their own lookup tables if needed.
+
+---
+
+### ✅ **PostGIS Usage (Optional but Recommended)**
+
+Use [`PostGIS`](https://postgis.net/) for `location`:
+
+```sql
+SELECT * FROM electric_vehicles
+WHERE ST_DWithin(location, ST_MakePoint(-122.3, 47.6)::geography, 5000);
+```
+
+To query all EVs within 5 km of a point.
+
+---
+
+### ✅ **Additional Considerations**
+
+* Indexes: Add indexes on frequently filtered columns like `make_id`, `model_year`, and `location` (use a spatial index for geography).
+* Constraints: Enforce `NOT NULL` on all essential fields.
+* Denormalization: If fast reporting is more critical than data integrity, some lookup tables can be inlined instead.
+
+---
+
+### 💡 Sample Schema Definition in SQL (simplified)
+
+```sql
+CREATE TABLE makes (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE utilities (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL
+);
+
+CREATE TABLE cities (
+    id SERIAL PRIMARY KEY,
+    city TEXT NOT NULL,
+    county TEXT,
+    state CHAR(2),
+    postal_code TEXT
+);
+
+CREATE TABLE electric_vehicles (
+    id SERIAL PRIMARY KEY,
+    vin_prefix VARCHAR(10) UNIQUE,
+    model_year INTEGER,
+    make_id INTEGER REFERENCES makes(id),
+    model TEXT,
+    vehicle_type TEXT,
+    cafv_eligibility TEXT,
+    electric_range INTEGER,
+    base_msrp NUMERIC(10, 2),
+    legislative_district INTEGER,
+    dol_vehicle_id BIGINT,
+    location GEOGRAPHY(Point, 4326),
+    utility_id INTEGER REFERENCES utilities(id),
+    census_tract BIGINT,
+    city_id INTEGER REFERENCES cities(id)
+);
+```
+
+Would you like me to generate this schema in a `.sql` file or a `SQLAlchemy` model for you?
